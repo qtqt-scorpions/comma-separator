@@ -214,7 +214,16 @@
     <div class="main-layout">
         <div class="column">
             <h3>Dữ liệu Gốc (Trái)</h3>
-            <textarea id="leftText" placeholder="Nhập dữ liệu vào đây..."></textarea>
+            <textarea id="leftText" style="height: auto; flex: 1; min-height: 250px;" placeholder="Nhập dữ liệu vào đây..."></textarea>
+            
+            <div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 15px;">
+                <h3 style="margin-bottom: 10px; color: var(--danger); text-align: center;">Loại trừ phần tử (Excluded Items)</h3>
+                <textarea id="excludeText" style="height: 100px;" placeholder="Nhập các phần tử muốn loại trừ (dòng mới, dấu phẩy, chấm phẩy...)"></textarea>
+                <div class="checkbox-group" style="margin-top: 10px;">
+                    <label><input type="checkbox" id="excludeIgnoreCase" checked> Không phân biệt chữ hoa/thường (Case insensitive)</label>
+                    <label><input type="checkbox" id="excludeExactMatch" checked> Khớp chính xác (Exact match)</label>
+                </div>
+            </div>
         </div>
         
         <div class="middle-controls">
@@ -225,7 +234,7 @@
 
         <div class="column">
             <h3>Kết Quả (Phải)</h3>
-            <textarea id="rightText" placeholder="Kết quả sẽ hiển thị ở đây..."></textarea>
+            <textarea id="rightText" style="height: auto; flex: 1; min-height: 250px;" placeholder="Kết quả sẽ hiển thị ở đây..."></textarea>
             
             <div class="result-footer">
                 <div class="item-count" id="itemCount">Số lượng: 0</div>
@@ -280,6 +289,7 @@
                 <label><input type="checkbox" id="removeDuplicates" checked> Remove duplicates (Xóa trùng lặp)</label>
             </div>
         </div>
+
     </div>
 </div>
 
@@ -300,7 +310,8 @@
         'autoConvert', 'autoCopyToClipboard', 'outputDelimiter', 
         'customInputDelimiter', 'customOutputDelimiter',
         'lowercaseList', 'reverseList', 'removeLineBreaks', 
-        'removeExtraSpaces', 'removeAllWhitespace', 'removeDuplicates'
+        'removeExtraSpaces', 'removeAllWhitespace', 'removeDuplicates',
+        'excludeText', 'excludeIgnoreCase', 'excludeExactMatch'
     ];
 
     function saveSettings() {
@@ -435,6 +446,30 @@
         return /\r?\n/;
     }
 
+    function getExcludedSet() {
+        const text = document.getElementById('excludeText').value;
+        const ignoreCase = document.getElementById('excludeIgnoreCase').checked;
+        const exactMatch = document.getElementById('excludeExactMatch').checked;
+        
+        if (!text.trim()) return { set: new Set(), ignoreCase, exactMatch, list: [] };
+        
+        const rawItems = text.split(/[\r\n,;|]+/);
+        const set = new Set();
+        const list = [];
+        
+        for (let i = 0; i < rawItems.length; i++) {
+            let item = rawItems[i].trim();
+            if (item === '') continue;
+            if (ignoreCase) {
+                item = item.toLowerCase();
+            }
+            set.add(item);
+            list.push(item);
+        }
+        
+        return { set, ignoreCase, exactMatch, list };
+    }
+
     function processLeftToRight() {
         let text = leftText.value;
         if (!text.trim()) {
@@ -454,6 +489,8 @@
         const doRemoveExtraWS = document.getElementById('removeExtraSpaces').checked;
         const doLowercase = document.getElementById('lowercaseList').checked;
         const doRemoveDupes = document.getElementById('removeDuplicates').checked;
+        
+        const excludeInfo = getExcludedSet();
 
         for (let i = 0; i < rawItems.length; i++) {
             let item = rawItems[i];
@@ -474,6 +511,27 @@
             // Chữ thường
             if (doLowercase) {
                 item = item.toLowerCase();
+            }
+
+            // Kiểm tra loại trừ (Excluded Items)
+            if (excludeInfo.set.size > 0) {
+                let checkItem = item;
+                if (excludeInfo.ignoreCase && !doLowercase) {
+                    checkItem = checkItem.toLowerCase();
+                }
+                
+                if (excludeInfo.exactMatch) {
+                    if (excludeInfo.set.has(checkItem)) continue;
+                } else {
+                    let shouldExclude = false;
+                    for (let j = 0; j < excludeInfo.list.length; j++) {
+                        if (checkItem.includes(excludeInfo.list[j])) {
+                            shouldExclude = true;
+                            break;
+                        }
+                    }
+                    if (shouldExclude) continue;
+                }
             }
 
             // Xóa trùng lặp
@@ -557,10 +615,17 @@
             
             if (document.getElementById('autoConvert').checked) processLeftToRight();
         });
-        if (el.type === 'text') {
+        if (el.type === 'text' || el.tagName === 'TEXTAREA') {
             el.addEventListener('input', () => {
                 saveSettings();
-                if (document.getElementById('autoConvert').checked) processLeftToRight();
+                if (document.getElementById('autoConvert').checked) {
+                    if (id === 'excludeText') {
+                        clearTimeout(typingTimer);
+                        typingTimer = setTimeout(processLeftToRight, doneTypingInterval);
+                    } else {
+                        processLeftToRight();
+                    }
+                }
             });
         }
     });
